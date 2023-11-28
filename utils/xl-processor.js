@@ -39,10 +39,10 @@ function processChunk(chunk, template, mapping) {
     })
 }
 
-export default async function readXlsxFile(filePath, templateName, mapping) {
+export default async function readXlsxFile(fileName, templateName, mapping) {
     try {
-        let workbook = xlsx.readFile(path.dirname(`../xls-file/${filePath}`));
-        const template = await fs.readFile(path.dirname(`../templates/${templateName}`), { encoding: 'utf-8' });
+        let workbook = xlsx.readFile(path.join(env.root, 'xls-file', fileName));
+        const template = await fs.readFile(path.join(env.root, 'templates', templateName), { encoding: 'utf-8' });
 
         let processed = 0;
 

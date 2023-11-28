@@ -2,6 +2,7 @@ import { workerData, parentPort } from "worker_threads";
 import mustache from "mustache";
 import puppeteer from "puppeteer";
 import path from "path";
+import env from "./env.js";
 
 function getMapping(data, mapping) {
     let id = data[mapping.__id];
@@ -31,7 +32,7 @@ async function processChunk(chunk, template, mapping) {
             let htmlContent = mustache.render(template, map);
             const page = await browser.newPage();
             await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
-            await page.pdf({ path: path.dirname(`../processed/${id}.pdf`) });
+            await page.pdf({ path: path.join(env.root, 'processed', `${id}.pdf`) });
 
             console.log(`PDF Generated: ${sno}`);
 
