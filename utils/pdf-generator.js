@@ -1,35 +1,7 @@
 import { workerData, parentPort } from "worker_threads";
 import mustache from "mustache";
-// import fs from "fs/promises";
 import puppeteer from "puppeteer";
-
-async function processChunk(chunk, template, mapping) {
-    try {
-        const browser = await puppeteer.launch({ headless: "new", args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-
-        for (let index = 0; index < chunk.length; index++) {
-            let data = chunk[index];
-            const { id, map } = getMapping(data, mapping);
-
-            let sno = data[mapping.__counter];
-
-            let htmlContent = mustache.render(template, map);
-            const page = await browser.newPage();
-            await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
-            await page.pdf({ path: `./processed/${id}.pdf` });
-            console.log(`PDF Generated: ${sno}`)
-            page.close();
-        }
-
-        browser.close();
-
-        parentPort.postMessage(chunk.length);
-    } catch (error) {
-        console.error(`generating PDF (${name}) : ${error.message}`);
-    }
-}
-
-processChunk(workerData.chunk, workerData.template, workerData.mapping);
+import path from "path";
 
 function getMapping(data, mapping) {
     let id = data[mapping.__id];
@@ -40,3 +12,40 @@ function getMapping(data, mapping) {
 
     return { id, map };
 }
+
+async function processChunk(chunk, template, mapping) {
+    let id = "";
+    try {
+        const browser = await puppeteer.launch({ headless: "new", args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+
+        for (let index = 0; index < chunk.length; index++) {
+            let data = chunk[index];
+            
+            const ref = getMapping(data, mapping);
+            
+            id = ref.id;
+            const map = ref.map;
+
+            let sno = data[mapping.__counter];
+
+            let htmlContent = mustache.render(template, map);
+            const page = await browser.newPage();
+            await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
+            await page.pdf({ path: path.dirname(`../processed/${id}.pdf`) });
+
+            console.log(`PDF Generated: ${sno}`);
+
+            page.close();
+        }
+
+        browser.close();
+
+        parentPort.postMessage(chunk.length);
+    } catch (error) {
+        console.error(`Generating PDF ${id}: ${error.message}`);
+    }
+}
+
+processChunk(workerData.chunk, workerData.template, workerData.mapping);
+
+
