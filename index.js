@@ -1,42 +1,59 @@
-import express from "express";
-import Joi from "joi";
-import readXlsxFile from "./utils/xl-processor.js";
+import processXlsxFile from "./utils/xl-processor.js";
 import downloadFromS3 from "./utils/downloadFromS3.js";
+import { getQueueTasks, deleteQueueTask } from "./utils/sqs.js";
+import env from "./utils/env.js";
+import { updateJobInitiation, updateJobCompletion } from "./utils/dynamo.js";
+import logger from "./utils/logger.js";
 
-const app = express();
+async function run() {
+    logger.info("------------------------------------");
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+    const taskQueue = await getQueueTasks();
+    if (taskQueue.Messages) {
+        const task = taskQueue.Messages[0];
+        const receiptHandle = task.ReceiptHandle;
 
-const bulkOrderSchema = Joi.object().keys({
-    template: Joi.string().required().regex(/\.html$/),
-    xlFile: Joi.string().required().regex(/\.xlsx$/),
-    mapping: Joi.object()
-});
-app.post('/bulk', async (req, res) => {
-    const {error , value} = bulkOrderSchema.validate(req.body);
-    if(error) {
-        return res.status(400).json( error )
-    };
+        try {
+            const body = JSON.parse(task.Body);
+            const { mapping, jobId, template, xlFile } = body;
+            logger.info(`Job Id: ${jobId}`);
 
-    const body = value;
-    try {
-        await downloadFromS3(body.template, "templates");
-        await downloadFromS3(body.xlFile, "xls-file");
-    } catch (error) {
-        console.log(error);
-        return res.status(500).json({ msg: "Error in fetching files!" });
-    }
+            const isNotBeingProcessed = await updateJobInitiation(body);
+            logger.info(`STARTING JOB: ${jobId}`);
 
-    readXlsxFile(body.xlFile, body.template, body.mapping);
-    return res.status(200).json({ msg: "Processing!" });
-});
+            if (isNotBeingProcessed) {
+                await deleteQueueTask(receiptHandle);
 
-app.listen(3000, (err) => {
-    if(err) {
-        console.log(err);
-        process.exit(1);
+                await downloadFromS3(template, "templates");
+                await downloadFromS3(xlFile, "xls-file");
+
+                await processXlsxFile(xlFile, template, mapping);
+                await updateJobCompletion(jobId, "");
+
+                logger.info(`Deleting from Queue`)
+            } else {
+                logger.info("Job Already In Progress!");
+            }
+        } catch (error) {
+            if (error instanceof SyntaxError) {
+                logger.error("Invalid JSON in task body!", error)
+            } else {
+                logger.error(error);
+            }
+        }
     } else {
-        console.log("Server Running on 3000");
+        console.log("NO ITEMS IN QUEUE");
     }
-})
+    initiate();
+}
+
+function initiate() {
+    logger.info('Waiting to start ...');
+    setTimeout(() => {
+        run();
+    }, parseInt(env.QUEUE_TIMEOUT_IN_MS))
+}
+
+initiate();
+
+// '{"jobId":"alpha2","template":"air.html","xlFile":"file_100.xlsx","mapping":{"masterpolicy_no":"Master Policy Number","reference_id":"Reference ID","name":"Name","email":"Personal Email ID","mobile_no":"Mobile No","gender":"Gender","date_of_birth":"Date of Birth","product_name":"Product name","type":"Type","coverage":"Coverage","premium":"Premium","igst":"IGST","premium_with_gst":"Premium with GST","trip_start":"Trip start date","trip_end":"Trip end date","no_of_days":"No of Days","transaction_date":"Transaction Date","plan":"Plan","policy_type":"Policy Type","coi_number":"COI Number","__id":"Reference ID","__counter":"S.No"}}'

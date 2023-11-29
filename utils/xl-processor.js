@@ -3,6 +3,7 @@ import { Worker } from "worker_threads";
 import xlsx from "xlsx";
 import path from "path";
 import env from "./env.js";
+import logger from "./logger.js";
 
 const threadCount = parseInt(env.WORKER_THREAD_COUNT);
 
@@ -39,7 +40,7 @@ function processChunk(chunk, template, mapping) {
     })
 }
 
-export default async function readXlsxFile(fileName, templateName, mapping) {
+export default async function processXlsxFile(fileName, templateName, mapping) {
     try {
         let workbook = xlsx.readFile(path.join(env.root, 'xls-file', fileName));
         const template = await fs.readFile(path.join(env.root, 'templates', templateName), { encoding: 'utf-8' });
@@ -53,9 +54,7 @@ export default async function readXlsxFile(fileName, templateName, mapping) {
         const totalRows = json.length;
         const chunkSize = Math.ceil(totalRows / threadCount);
 
-        // console.log(`Chunk Size: ${chunkSize} || Thread Count: ${threadCount}`);
-        console.log(`Rows: ${totalRows} | Thread: ${threadCount} | Chunk: ${chunkSize}`);
-        console.log("------------------------------------");
+        logger.info(`Rows: ${totalRows} | Thread: ${threadCount} | Chunk: ${chunkSize}`);
 
         let start = Date.now();
 
@@ -71,14 +70,14 @@ export default async function readXlsxFile(fileName, templateName, mapping) {
 
             processed += results.reduce((a, b) => a + b);
 
-            console.log(`-------- ${processed} Rows Processed -------`);
+            logger.info(`-------- ${processed} Rows Processed -------`);
         }
 
         let end = Date.now();
-        console.log(`Time Taken: ${end - start} ms`)
+        logger.info(`Time Taken: ${end - start} ms`)
 
     } catch (error) {
-        console.error(`reading XLSX file: ${error.message}`);
+        logger.error(error);
     }
 }
 

@@ -3,6 +3,7 @@ import mustache from "mustache";
 import puppeteer from "puppeteer";
 import path from "path";
 import env from "./env.js";
+import logger from "./logger.js";
 
 function getMapping(data, mapping) {
     let id = data[mapping.__id];
@@ -43,7 +44,7 @@ async function processChunk(chunk, template, mapping) {
 
         parentPort.postMessage(chunk.length);
     } catch (error) {
-        console.error(`Generating PDF ${id}: ${error.message}`);
+        logger.error(`Generating PDF ${id}: ${error.message}`);
     }
 }
 
