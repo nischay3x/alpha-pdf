@@ -3,7 +3,8 @@ import { Worker } from "worker_threads";
 import xlsx from "xlsx";
 import path from "path";
 import env from "./env.js";
-import logger from "./logger.js";
+import combined, { serverLogger } from "./logger.js";
+import { updateJobFailed } from "./dynamo.js";
 
 const threadCount = parseInt(env.WORKER_THREAD_COUNT);
 
@@ -40,24 +41,24 @@ function processChunk(chunk, template, mapping) {
     })
 }
 
-export default async function processXlsxFile(fileName, templateName, mapping) {
+export default async function processXlsxFile(fileName, templateName, mapping, jobId) {
+    let workbook = xlsx.readFile(path.join(env.root, 'xls-file', fileName));
+    const template = await fs.readFile(path.join(env.root, 'templates', templateName), { encoding: 'utf-8' });
+
+    let processed = 0;
+
+    let sheetName = workbook.SheetNames[0];
+    let worksheet = workbook.Sheets[sheetName];
+
+    const json = xlsx.utils.sheet_to_json(worksheet);
+    const totalRows = json.length;
+    const chunkSize = Math.ceil(totalRows / threadCount);
+
+    combined.info(`Rows: ${totalRows} | Thread: ${threadCount} | Chunk: ${chunkSize}`);
+
+    let start = Date.now();
+
     try {
-        let workbook = xlsx.readFile(path.join(env.root, 'xls-file', fileName));
-        const template = await fs.readFile(path.join(env.root, 'templates', templateName), { encoding: 'utf-8' });
-
-        let processed = 0;
-
-        let sheetName = workbook.SheetNames[0];
-        let worksheet = workbook.Sheets[sheetName];
-
-        const json = xlsx.utils.sheet_to_json(worksheet);
-        const totalRows = json.length;
-        const chunkSize = Math.ceil(totalRows / threadCount);
-
-        logger.info(`Rows: ${totalRows} | Thread: ${threadCount} | Chunk: ${chunkSize}`);
-
-        let start = Date.now();
-
         let chunksGroups = getChunkGroups(json, chunkSize, threadCount);
         for (let i = 0; i < chunksGroups.length; i++) {
             const group = chunksGroups[i];
@@ -70,14 +71,19 @@ export default async function processXlsxFile(fileName, templateName, mapping) {
 
             processed += results.reduce((a, b) => a + b);
 
-            logger.info(`-------- ${processed} Rows Processed -------`);
+            combined.info(`${processed} Rows Processed`);
         }
 
         let end = Date.now();
-        logger.info(`Time Taken: ${end - start} ms`)
+        serverLogger.info(`Time Taken: ${end - start} ms`);
+
+        await Promise.all([
+            fs.rm(path.join(env.root, 'xls-file', fileName)),
+            fs.rm(path.join(env.root, 'templates', templateName))
+        ]);
 
     } catch (error) {
-        logger.error(error);
+        throw new Error("At processXlsxFile "+ error)
     }
 }
 

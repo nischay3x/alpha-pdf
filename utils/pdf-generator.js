@@ -3,7 +3,7 @@ import mustache from "mustache";
 import puppeteer from "puppeteer";
 import path from "path";
 import env from "./env.js";
-import logger from "./logger.js";
+import logger, { processLogger } from "./logger.js";
 
 function getMapping(data, mapping) {
     let id = data[mapping.__id];
@@ -17,6 +17,7 @@ function getMapping(data, mapping) {
 
 async function processChunk(chunk, template, mapping) {
     let id = "";
+    let successful = 0;
     try {
         const browser = await puppeteer.launch({ headless: "new", args: ['--no-sandbox', '--disable-setuid-sandbox'] });
 
@@ -35,16 +36,15 @@ async function processChunk(chunk, template, mapping) {
             await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
             await page.pdf({ path: path.join(env.root, 'processed', `${id}.pdf`) });
 
-            console.log(`PDF Generated: ${sno}`);
-
             page.close();
+            successful += 1;
         }
 
         browser.close();
 
-        parentPort.postMessage(chunk.length);
+        parentPort.postMessage(successful);
     } catch (error) {
-        logger.error(`Generating PDF ${id}: ${error.message}`);
+        processLogger.error(`Generating PDF ${id}: ${error.message}`);
     }
 }
 

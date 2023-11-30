@@ -1,6 +1,8 @@
 import { DynamoDBClient, PutItemCommand, GetItemCommand, DeleteItemCommand, UpdateItemCommand, ScanCommand, ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
+import fs from "fs/promises";
 import env from "./env.js";
-import logger from "./logger.js";
+import combined, { processLogger, serverLogger } from "./logger.js";
+import path from "path";
 
 const dynamoClient = new DynamoDBClient({
     region: env.AWS_REGION_NAME,
@@ -13,7 +15,7 @@ const tableName = env.AWS_DYNAMO_QUEUE_TABLE;
 
 
 export async function updateJobInitiation({ jobId, template, xlFile }) {
-    logger.info(`Checking Job Status`);
+    processLogger.info("DB: Checking Job Status");
 
     const now = new Date().toISOString();
     const putItemCommand = new PutItemCommand({
@@ -33,15 +35,19 @@ export async function updateJobInitiation({ jobId, template, xlFile }) {
         await dynamoClient.send(putItemCommand);
         return true;
     } catch (error) {
-        if(error instanceof ConditionalCheckFailedException) {}
-        else { logger.error(error) }
-        return false;
+        if(error instanceof ConditionalCheckFailedException) {
+          serverLogger.info("Job already in progress");
+          return false;
+        }
+        else {
+          throw new Error("At updateJobInitiation " +error);
+        }
     }
 }
 
 
-// Function to complete a job
-export async function updateJobCompletion(jobId, logs) {
+export async function updateJobCompletion(jobId) {
+  const logs = await fs.readFile(path.join(env.root, 'process.log'), { encoding: 'utf-8' });
   const now = new Date().toISOString();
   const updateItemParams = {
     TableName: tableName,
@@ -64,13 +70,47 @@ export async function updateJobCompletion(jobId, logs) {
 
   try {
     const updateItemCommand = new UpdateItemCommand(updateItemParams);
-    const data = await dynamoClient.send(updateItemCommand);
-    console.log("Job completed successfully");
+    await dynamoClient.send(updateItemCommand);
+    
   } catch (error) {
-    console.error("Error completing job");
+    throw new Error("At updateJobCompletion " + error);
   }
 }
 
+
+export async function updateJobFailed(jobId) {
+  const logFilePath = path.join(env.root, 'process.log');
+  const logs = await fs.readFile(logFilePath, { encoding: 'utf-8' });
+
+  const now = new Date().toISOString();
+
+  const updateItemParams = {
+    TableName: tableName,
+    Key: {
+      jobId: { S: jobId },
+    },
+    UpdateExpression: "SET #status = :completed, updatedAt = :now, #logs = :logs",
+    ExpressionAttributeNames: {
+      "#status": "status",
+      "#logs": "logs",
+    },
+    ExpressionAttributeValues: {
+      ":completed": { S: "FAILED" },
+      ":now": { S: now },
+      ":logs": { S: logs },
+    },
+    ConditionExpression: "attribute_exists(jobId)", 
+    ReturnValues: "ALL_NEW",
+  };
+
+  try {
+    const updateItemCommand = new UpdateItemCommand(updateItemParams);
+    await dynamoClient.send(updateItemCommand);
+
+  } catch (error) {
+    throw new Error("At updateJobFailed " + error);
+  }
+}
 
 
 // // Specify the attribute to update and its new value

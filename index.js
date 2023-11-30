@@ -1,59 +1,75 @@
+import fs from "fs/promises";
+import path from "path";
 import processXlsxFile from "./utils/xl-processor.js";
 import downloadFromS3 from "./utils/downloadFromS3.js";
 import { getQueueTasks, deleteQueueTask } from "./utils/sqs.js";
 import env from "./utils/env.js";
-import { updateJobInitiation, updateJobCompletion } from "./utils/dynamo.js";
-import logger from "./utils/logger.js";
+import { updateJobInitiation, updateJobCompletion, updateJobFailed } from "./utils/dynamo.js";
+import combined, { processLogger, serverLogger } from "./utils/logger.js";
+
+let processing = false;
 
 async function run() {
-    logger.info("------------------------------------");
+    if (!processing) {
+        processing = true;
 
-    const taskQueue = await getQueueTasks();
-    if (taskQueue.Messages) {
-        const task = taskQueue.Messages[0];
-        const receiptHandle = task.ReceiptHandle;
+        serverLogger.info("Fetching tasks");
+        const taskQueue = await getQueueTasks();
+        
+        if (taskQueue.Messages) {
+            const task = taskQueue.Messages[0];
+            const receiptHandle = task.ReceiptHandle;
 
-        try {
-            const body = JSON.parse(task.Body);
-            const { mapping, jobId, template, xlFile } = body;
-            logger.info(`Job Id: ${jobId}`);
+            const logFilePath = path.join(env.root, 'process.log');
+            await fs.truncate(logFilePath, 0);
 
-            const isNotBeingProcessed = await updateJobInitiation(body);
-            logger.info(`STARTING JOB: ${jobId}`);
+            try {
+                const body = JSON.parse(task.Body);
+                const { mapping, jobId, template, xlFile } = body;
+                combined.info(`Job Id: ${jobId}`);
 
-            if (isNotBeingProcessed) {
-                await deleteQueueTask(receiptHandle);
+                const isNotBeingProcessed = await updateJobInitiation(body);
 
-                await downloadFromS3(template, "templates");
-                await downloadFromS3(xlFile, "xls-file");
+                if (isNotBeingProcessed) {
+                    await deleteQueueTask(receiptHandle);
+                    processLogger.info(`Deleting from Queue`);
 
-                await processXlsxFile(xlFile, template, mapping);
-                await updateJobCompletion(jobId, "");
+                    await Promise.all([
+                        downloadFromS3(template, "templates"),
+                        downloadFromS3(xlFile, "xls-file")
+                    ]);
+                    processLogger.info("Resource files downloaded!");
 
-                logger.info(`Deleting from Queue`)
-            } else {
-                logger.info("Job Already In Progress!");
+                    try {
+                        await processXlsxFile(xlFile, template, mapping, jobId);
+                        await updateJobCompletion(jobId);
+                    } catch (error) {
+                        processLogger.error(error);
+                        await updateJobFailed(jobId);
+                    }
+
+                }
+            } catch (error) {
+                if (error instanceof SyntaxError) {
+                    processLogger.error("Invalid JSON in task body!")
+                } else {
+                    processLogger.error(error.message);
+                }
             }
-        } catch (error) {
-            if (error instanceof SyntaxError) {
-                logger.error("Invalid JSON in task body!", error)
-            } else {
-                logger.error(error);
-            }
+        } else {
+            serverLogger.info("Queue Empty!");
         }
-    } else {
-        console.log("NO ITEMS IN QUEUE");
+        processing = false;
     }
-    initiate();
 }
 
-function initiate() {
-    logger.info('Waiting to start ...');
-    setTimeout(() => {
+
+setInterval(() => {
+    if (!processing) {
+        
+        serverLogger.info(`----- Timeout ${env.QUEUE_TIMEOUT_IN_MS} -----`);
         run();
-    }, parseInt(env.QUEUE_TIMEOUT_IN_MS))
-}
+    }
+}, parseInt(env.QUEUE_TIMEOUT_IN_MS))
 
-initiate();
 
-// '{"jobId":"alpha2","template":"air.html","xlFile":"file_100.xlsx","mapping":{"masterpolicy_no":"Master Policy Number","reference_id":"Reference ID","name":"Name","email":"Personal Email ID","mobile_no":"Mobile No","gender":"Gender","date_of_birth":"Date of Birth","product_name":"Product name","type":"Type","coverage":"Coverage","premium":"Premium","igst":"IGST","premium_with_gst":"Premium with GST","trip_start":"Trip start date","trip_end":"Trip end date","no_of_days":"No of Days","transaction_date":"Transaction Date","plan":"Plan","policy_type":"Policy Type","coi_number":"COI Number","__id":"Reference ID","__counter":"S.No"}}'
