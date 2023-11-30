@@ -16,7 +16,7 @@ async function run() {
 
         serverLogger.info("Fetching tasks");
         const taskQueue = await getQueueTasks();
-        
+
         if (taskQueue.Messages) {
             const task = taskQueue.Messages[0];
             const receiptHandle = task.ReceiptHandle;
@@ -43,18 +43,18 @@ async function run() {
 
                     try {
                         await processXlsxFile(xlFile, template, mapping, jobId);
+
+                        await createArchive(jobId);
+                        processLogger.info("Archive Created!");
+
+                        await cleanUp();
+                        serverLogger.info("Cleaned!");
+
+                        await updateJobCompletion(jobId);
                     } catch (error) {
                         processLogger.error(error);
                         await updateJobFailed(jobId);
                     }
-
-                    await createArchive(jobId);
-                    processLogger.info("Archive Created!");
-
-                    await cleanUp();
-                    serverLogger.info("Cleaned!");
-
-                    await updateJobCompletion(jobId);
                 }
             } catch (error) {
                 if (error instanceof SyntaxError) {
@@ -73,7 +73,7 @@ async function run() {
 
 setInterval(() => {
     if (!processing) {
-        
+
         serverLogger.info(`----- Timeout ${env.QUEUE_TIMEOUT_IN_MS} -----`);
         run();
     }
