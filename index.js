@@ -6,6 +6,7 @@ import { getQueueTasks, deleteQueueTask } from "./utils/sqs.js";
 import env from "./utils/env.js";
 import { updateJobInitiation, updateJobCompletion, updateJobFailed } from "./utils/dynamo.js";
 import combined, { processLogger, serverLogger } from "./utils/logger.js";
+import createArchive, { cleanUp } from "./utils/archiver.js";
 
 let processing = false;
 
@@ -42,12 +43,18 @@ async function run() {
 
                     try {
                         await processXlsxFile(xlFile, template, mapping, jobId);
-                        await updateJobCompletion(jobId);
                     } catch (error) {
                         processLogger.error(error);
                         await updateJobFailed(jobId);
                     }
 
+                    await createArchive(jobId);
+                    processLogger.info("Archive Created!");
+
+                    await cleanUp();
+                    serverLogger.info("Cleaned!");
+
+                    await updateJobCompletion(jobId);
                 }
             } catch (error) {
                 if (error instanceof SyntaxError) {
