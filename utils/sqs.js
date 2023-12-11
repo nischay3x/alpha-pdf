@@ -22,9 +22,9 @@ export const sendMessage = (params) => {
 
 const receiveParams = {
     QueueUrl: queueUrl,
-    MaxNumberOfMessages: 1, // Maximum number of messages to receive
-    VisibilityTimeout: 10, // Time during which the message will be invisible to others (seconds)
-    WaitTimeSeconds: 0, // Long polling: 0 for short polling, > 0 for long polling
+    MaxNumberOfMessages: 1,
+    VisibilityTimeout: 10, 
+    WaitTimeSeconds: 0, 
 };
 const command = new ReceiveMessageCommand(receiveParams);
 export const getQueueTasks = () => sqsClient.send(command);

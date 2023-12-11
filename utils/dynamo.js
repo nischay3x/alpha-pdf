@@ -1,7 +1,7 @@
-import { DynamoDBClient, PutItemCommand, GetItemCommand, DeleteItemCommand, UpdateItemCommand, ScanCommand, ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, PutItemCommand, UpdateItemCommand, ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
 import fs from "fs/promises";
 import env from "./env.js";
-import combined, { processLogger, serverLogger } from "./logger.js";
+import { processLogger, serverLogger } from "./logger.js";
 import path from "path";
 
 const dynamoClient = new DynamoDBClient({
@@ -46,7 +46,7 @@ export async function updateJobInitiation({ jobId, template, xlFile }) {
 }
 
 
-export async function updateJobCompletion(jobId) {
+export async function updateJobCompletion(jobId, archiveLink) {
   const logs = await fs.readFile(path.join(env.root, 'process.log'), { encoding: 'utf-8' });
   const now = new Date().toISOString();
   const updateItemParams = {
@@ -54,15 +54,17 @@ export async function updateJobCompletion(jobId) {
     Key: {
       jobId: { S: jobId },
     },
-    UpdateExpression: "SET #status = :completed, updatedAt = :now, #logs = :logs",
+    UpdateExpression: "SET #status = :completed, updatedAt = :now, #logs = :logs, #archive = :archive",
     ExpressionAttributeNames: {
       "#status": "status",
       "#logs": "logs",
+      "#archive": "archive"
     },
     ExpressionAttributeValues: {
       ":completed": { S: "COMPLETED" },
       ":now": { S: now },
       ":logs": { S: logs },
+      ":archive": { S: archiveLink }
     },
     ConditionExpression: "attribute_exists(jobId)", 
     ReturnValues: "ALL_NEW",

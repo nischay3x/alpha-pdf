@@ -24,9 +24,12 @@ async function run() {
             const logFilePath = path.join(env.root, 'process.log');
             await fs.truncate(logFilePath, 0);
 
+            let currentJobId = "";
+
             try {
                 const body = JSON.parse(task.Body);
                 const { mapping, jobId, template, xlFile } = body;
+                currentJobId = jobId;
                 combined.info(`Job Id: ${jobId}`);
 
                 const isNotBeingProcessed = await updateJobInitiation(body);
@@ -44,13 +47,15 @@ async function run() {
                     try {
                         await processXlsxFile(xlFile, template, mapping, jobId);
 
-                        await createArchive(jobId);
+                        const arciveLink = await createArchive(jobId);
                         processLogger.info("Archive Created!");
+
+                        await fs.rm(path.join(env.root, `${jobId}.zip`));
 
                         await cleanUp();
                         serverLogger.info("Cleaned!");
 
-                        await updateJobCompletion(jobId);
+                        await updateJobCompletion(jobId, arciveLink);
                     } catch (error) {
                         processLogger.error(error);
                         await updateJobFailed(jobId);
@@ -62,6 +67,7 @@ async function run() {
                 } else {
                     processLogger.error(error.message);
                 }
+                await updateJobFailed(currentJobId);
             }
         } else {
             serverLogger.info("Queue Empty!");

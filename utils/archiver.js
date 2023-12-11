@@ -3,27 +3,7 @@ import fsc from "fs";
 import archiver from "archiver";
 import path from "path";
 import env from "./env.js";
-
-
-// const output = fs.createWriteStream('directory_archive.zip'); // Name for the resulting ZIP file
-// const archive = archiver('zip', {
-//   zlib: { level: 9 } // Set compression level (0-9)
-// });
-
-// output.on('close', () => {
-//   console.log('Directory archived successfully.');
-// });
-
-// archive.on('error', (err) => {
-//   console.error('Error creating archive:', err);
-// });
-
-// archive.pipe(output);
-
-// // Replace 'directory_to_zip' with the path to the directory you want to archive
-// archive.directory('directory_to_zip', false);
-
-// archive.finalize();
+import uploadToFolder from "./uploadToS3.js";
 
 export async function cleanUp() {
     const directory = path.join(env.root, 'processed');
@@ -31,34 +11,16 @@ export async function cleanUp() {
     await fs.mkdir(directory);
 }
 
-// fs.rmdir(directoryPath, { recursive: true }, (err) => {
-//     if (err) {
-//       console.error('Error removing directory:', err);
-//       return;
-//     }
-  
-//     console.log('Directory removed successfully.');
-  
-//     // Recreate the directory
-//     fs.mkdir(directoryPath, { recursive: true }, (err) => {
-//       if (err) {
-//         console.error('Error creating directory:', err);
-//         return;
-//       }
-//       console.log('Directory created successfully.');
-//     });
-//   });
-
-
 export default function archive(jobId) {
     return new Promise((resolve, rejects) => {
         const output = fsc.createWriteStream(`${jobId}.zip`);
         const archive = archiver('zip', {
             zlib: { level: 9 } 
         });
-
-        output.on('close', () => {
-            resolve();
+        output.on('close', async () => {
+            const buffer = await fs.readFile(path.join(env.root, `${jobId}.zip`));
+            await uploadToFolder("archive", `${jobId}.zip`, buffer);
+            resolve(`https://${env.AWS_BUCKET_NAME}.s3.${env.AWS_REGION_NAME}.amazonaws.com/archive/${jobId}.zip`);
         });
 
         archive.on('error', (err) => {

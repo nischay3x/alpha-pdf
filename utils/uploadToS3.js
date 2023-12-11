@@ -10,7 +10,7 @@ const s3Client = new S3Client({
 });
 
 export default async function uploadToFolder(folderName, fileName, fileContent) {
-  const folderKey = `${folderName}/`; 
+  const folderKey = `${folderName}/`;
 
   const params = {
     Bucket: env.AWS_BUCKET_NAME,
@@ -18,12 +18,7 @@ export default async function uploadToFolder(folderName, fileName, fileContent) 
     Body: fileContent,
   };
 
-  try {
-    const command = new PutObjectCommand(params);
-    const response = await s3Client.send(command);
-    console.log(`File uploaded successfully: ${response}`);
-  } catch (err) {
-    console.error(`Error uploading file: ${err}`);
-  }
+  const command = new PutObjectCommand(params);
+  return s3Client.send(command);
 }
 
