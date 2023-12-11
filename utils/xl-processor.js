@@ -42,6 +42,7 @@ function processChunk(chunk, template, mapping) {
 }
 
 export default async function processXlsxFile(fileName, templateName, mapping, jobId) {
+    console.log("Processing...");
     let workbook = xlsx.readFile(path.join(env.root, 'xls-file', fileName));
     const template = await fs.readFile(path.join(env.root, 'templates', templateName), { encoding: 'utf-8' });
 

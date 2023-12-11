@@ -29,8 +29,6 @@ async function processChunk(chunk, template, mapping) {
             id = ref.id;
             const map = ref.map;
 
-            let sno = data[mapping.__counter];
-
             let htmlContent = mustache.render(template, map);
             const page = await browser.newPage();
             await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
