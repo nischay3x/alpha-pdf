@@ -23,7 +23,7 @@ export const sendMessage = (params) => {
 const receiveParams = {
     QueueUrl: queueUrl,
     MaxNumberOfMessages: 1,
-    VisibilityTimeout: 10, 
+    VisibilityTimeout: 30, 
     WaitTimeSeconds: 0, 
 };
 const command = new ReceiveMessageCommand(receiveParams);

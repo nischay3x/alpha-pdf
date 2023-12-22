@@ -4,7 +4,6 @@ import xlsx from "xlsx";
 import path from "path";
 import env from "./env.js";
 import combined, { serverLogger } from "./logger.js";
-import { updateJobFailed } from "./dynamo.js";
 
 const threadCount = parseInt(env.WORKER_THREAD_COUNT);
 
@@ -22,17 +21,16 @@ function getChunkGroups(array, chunkSize, groupSize) {
     return groupedArray;
 }
 
-function processChunk(chunk, template, mapping) {
+function processChunk(chunk, template, config) {
     const worker = new Worker("./utils/pdf-generator.js", {
         workerData: {
-            chunk, template, mapping
+            chunk, template, config
         }
     });
     return new Promise((resolve, reject) => {
-        worker.once('message', (length) => {
+        worker.once('message', (successful) => {
             worker.terminate();
-            let count = parseInt(length);
-            resolve(count);
+            resolve(successful);
         })
         worker.once('error', (err) => {
             console.log(err);
@@ -41,7 +39,7 @@ function processChunk(chunk, template, mapping) {
     })
 }
 
-export default async function processXlsxFile(fileName, templateName, mapping, jobId) {
+export default async function processXlsxFile(fileName, templateName, config) {
     console.log("Processing...");
     let workbook = xlsx.readFile(path.join(env.root, 'xls-file', fileName));
     const template = await fs.readFile(path.join(env.root, 'templates', templateName), { encoding: 'utf-8' });
@@ -58,7 +56,6 @@ export default async function processXlsxFile(fileName, templateName, mapping, j
     combined.info(`Rows: ${totalRows} | Thread: ${threadCount} | Chunk: ${chunkSize}`);
 
     let start = Date.now();
-
     try {
         let chunksGroups = getChunkGroups(json, chunkSize, threadCount);
         for (let i = 0; i < chunksGroups.length; i++) {
@@ -66,11 +63,11 @@ export default async function processXlsxFile(fileName, templateName, mapping, j
             let tasks = [];
             for (let j = 0; j < group.length; j++) {
                 const chunk = group[j];
-                tasks.push(processChunk(chunk, template, mapping))
+                tasks.push(processChunk(chunk, template, config))
             }
             let results = await Promise.all(tasks);
 
-            processed += results.reduce((a, b) => a + b);
+            processed += results.reduce((a, b) => a+b);
 
             combined.info(`${processed} Rows Processed`);
         }

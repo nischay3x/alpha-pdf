@@ -7,6 +7,7 @@ import env from "./utils/env.js";
 import { updateJobInitiation, updateJobCompletion, updateJobFailed } from "./utils/dynamo.js";
 import combined, { processLogger, serverLogger } from "./utils/logger.js";
 import createArchive, { cleanUp } from "./utils/archiver.js";
+import { sendBatchCompleteMail } from "./utils/mail.js";
 
 let processing = false;
 
@@ -14,7 +15,7 @@ async function run() {
     if (!processing) {
         processing = true;
 
-        serverLogger.info("Fetching tasks");
+        console.info("Fetching tasks");
         const taskQueue = await getQueueTasks();
 
         if (taskQueue.Messages) {
@@ -28,7 +29,7 @@ async function run() {
 
             try {
                 const body = JSON.parse(task.Body);
-                const { mapping, jobId, template, xlFile } = body;
+                const { configFile, jobId, templateFile, xlFile } = body;
                 currentJobId = jobId;
                 combined.info(`Job Id: ${jobId}`);
 
@@ -39,23 +40,32 @@ async function run() {
                     processLogger.info(`Deleting from Queue`);
 
                     await Promise.all([
-                        downloadFromS3(template, "templates"),
-                        downloadFromS3(xlFile, "xls-file")
+                        downloadFromS3(templateFile, "templates"),
+                        downloadFromS3(xlFile, "xls-file"),
+                        downloadFromS3(configFile, "config")
                     ]);
                     processLogger.info("Resource files downloaded!");
 
+                    const configString = await fs.readFile(path.join(env.root, 'config', configFile), { encoding: 'utf-8' });
+                    const config = JSON.parse(configString);
+
                     try {
-                        await processXlsxFile(xlFile, template, mapping, jobId);
+                        await processXlsxFile(xlFile, templateFile, config, jobId);
 
-                        const arciveLink = await createArchive(jobId);
-                        processLogger.info("Archive Created!");
+                        let archiveLink = "";
+                        if(config.createArchive) {
+                            archiveLink = await createArchive(jobId);
+                            processLogger.info("Archive Created!");
+                            await sendBatchCompleteMail(config.reportEmail, jobId, archiveLink);
+                            processLogger.info("Report Email Sent!");
+                            await fs.rm(path.join(env.root, `${jobId}.zip`));
+                        }
 
-                        await fs.rm(path.join(env.root, `${jobId}.zip`));
-
+                        await fs.rm(path.join(env.root, 'config', configFile));
                         await cleanUp();
                         serverLogger.info("Cleaned!");
 
-                        await updateJobCompletion(jobId, arciveLink);
+                        await updateJobCompletion(jobId, archiveLink);
                     } catch (error) {
                         processLogger.error(error);
                         await updateJobFailed(jobId);
@@ -70,7 +80,7 @@ async function run() {
                 await updateJobFailed(currentJobId);
             }
         } else {
-            serverLogger.info("Queue Empty!");
+            console.info("Queue Empty!");
         }
         processing = false;
     }
@@ -79,8 +89,7 @@ async function run() {
 
 setInterval(() => {
     if (!processing) {
-
-        serverLogger.info(`----- Timeout ${env.QUEUE_TIMEOUT_IN_MS} -----`);
+        console.info(`----- Timeout ${env.QUEUE_TIMEOUT_IN_MS} -----`);
         run();
     }
 }, parseInt(env.QUEUE_TIMEOUT_IN_MS))

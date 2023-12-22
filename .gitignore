@@ -6,3 +6,6 @@
 *.log
 send.js
 *.zip
+/config
+*.ts
+sample-config.json

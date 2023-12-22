@@ -14,7 +14,7 @@ const dynamoClient = new DynamoDBClient({
 const tableName = env.AWS_DYNAMO_QUEUE_TABLE;
 
 
-export async function updateJobInitiation({ jobId, template, xlFile }) {
+export async function updateJobInitiation({ jobId, templateFile, xlFile }) {
     processLogger.info("DB: Checking Job Status");
 
     const now = new Date().toISOString();
@@ -25,7 +25,7 @@ export async function updateJobInitiation({ jobId, template, xlFile }) {
             createdAt: { S: now },
             updatedAt: { S: now },
             status: { S: "PROCESSING" },
-            temmplate: { S: template },
+            temmplate: { S: templateFile },
             xlFile: { S: xlFile },
             logs: { S: "" }
         },
@@ -46,7 +46,7 @@ export async function updateJobInitiation({ jobId, template, xlFile }) {
 }
 
 
-export async function updateJobCompletion(jobId, archiveLink) {
+export async function updateJobCompletion(jobId, archiveLink = "") {
   const logs = await fs.readFile(path.join(env.root, 'process.log'), { encoding: 'utf-8' });
   const now = new Date().toISOString();
   const updateItemParams = {

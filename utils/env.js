@@ -12,6 +12,11 @@ const env = {
     AWS_DYNAMO_QUEUE_TABLE: process.env.AWS_DYNAMO_QUEUE_TABLE,
     WORKER_THREAD_COUNT: process.env.WORKER_THREAD_COUNT,
     QUEUE_TIMEOUT_IN_MS: process.env.QUEUE_TIMEOUT_IN_MS,
+    GMAIL_CLIENT_ID: process.env.GMAIL_CLIENT_ID,
+    GMAIL_CLIENT_SECRET: process.env.GMAIL_CLIENT_SECRET,
+    GMAIL_REDIRECT_URI: process.env.GMAIL_REDIRECT_URI,
+    GMAIL_REFRESH_TOKEN: process.env.GMAIL_REFRESH_TOKEN,
+    GMAIL_USER: process.env.GMAIL_USER,
     root: path.resolve(process.cwd(), "./")
 }
 
